@@ -61,10 +61,8 @@ async function compile(scss) {
   }
   const sass = await importSass;
   function inject(css) {
-    const style = document.createElement('style');
-    style.setAttribute('type', 'text/css');
-    style.textContent = css;
-    document.getElementsByTagName('head')[0].appendChild(style);
+    load.metadata.format = 'esm';
+    resolve('export default ' + JSON.stringify(css) + ";");
   }
   const { status, text, formatted } = await new Promise(res => {
     sass.compile(content, scss.options, res);
