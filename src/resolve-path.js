@@ -1,23 +1,28 @@
-import path from 'path';
-import url from 'url';
+var path = require('path');
+var  url = require('url');
 
-const paths = {};
+var paths = {};
 
-async function resolvePath(request) {
-  const { previous } = request;
-  let { current } = request;
-  if (current.substr(0, 5) === 'jspm:') {
-    current = current.replace(/^jspm:/, '');
-    if (!current.match(/\.s(c|a)ss/)) current += '.scss';
-    const file = await System.normalize(current);
-    return file.replace(/\.js$|\.ts$/, '');
-  }
-  const prevBase = `${path.dirname(previous)}/`;
-  const base = (previous === 'stdin') ? request.options.urlBase : paths[previous] || prevBase;
-  let resolved = url.resolve(base, current);
-  if (previous !== 'stdin') paths[current] = `${path.dirname(resolved)}/`;
-  if (!resolved.match(/\.s(c|a)ss/)) resolved += '.scss';
-  return `${resolved}`;
-}
+var resolvePath = function(request) {
+  return new Promise(function(resolve, reject) {
+    var { previous } = request;
+    var { current } = request;
+    if (current.substr(0, 5) === 'jspm:') {
+      current = current.replace(/^jspm:/, '') + '.scss';
+      System.normalize(current)
+        .then(function(file) { return resolve(file.replace(/\.js$|\.ts$/, ''));})
+        .catch(function(e) {return reject(e)});
+    } else {
+      var prevBase = path.dirname(previous);
+      if (prevBase.legth === 0){
+          prevBase += '/';
+      }
+      var base = (previous === 'stdin') ? request.options.urlBase : paths[previous] || prevBase;
+      var resolved = url.resolve(base, current);
+      if (previous !== 'stdin') paths[current] = path.dirname(resolved) + '/';
+      resolve(`${resolved}.scss`);
+    }
+  });
+};
 
-export default resolvePath;
+exports.default = resolvePath;

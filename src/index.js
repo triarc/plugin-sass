@@ -1,23 +1,23 @@
-/* global __moduleName */
-let fetch;
-let translate;
-let bundle;
+var fetch;
+var translate;
+var bundle;
 
 if (typeof window !== 'undefined') {
-  fetch = async function fetchIt(load) {
-    const inject = await System.import('./sass-inject', { name: __moduleName });
-    return inject.default(load);
+  fetch = function(load) {
+    return System.import(__dirname + '/sass-inject')
+      .then(function(inject){ return inject.default(load)});
   };
 } else {
   // setting format = 'defined' means we're managing our own output
-  translate = function translateIt(load) {
-    /* eslint no-param-reassign: "off" */
+  translate = function(load) {
     load.metadata.format = 'defined';
   };
-  bundle = async function bundler(loads, opts) {
-    const builder = await System.import('./sass-builder', { name: __moduleName });
-    return builder.default.call(System, loads, opts);
+  bundle = function bundler(loads, opts) {
+    return System.import(__dirname + '/sass-builder')
+      .then(function(builder){ return builder.default.call(System, loads, opts)});
   };
 }
 
-export { fetch, translate, bundle };
+exports.fetch = fetch;
+exports.translate = translate;
+exports.bundle = bundle;

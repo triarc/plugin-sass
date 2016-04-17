@@ -1,94 +1,100 @@
 /* global Modernizr __moduleName */
 
-import './modernizr';
+require('./modernizr');
 
-import autoprefixer from 'autoprefixer';
-import isEmpty from 'lodash/isEmpty';
-import isString from 'lodash/isString';
-import isUndefined from 'lodash/isUndefined';
-import path from 'path';
-import postcss from 'postcss';
-import reqwest from 'reqwest';
-import url from 'url';
+var autoprefixer = require( 'autoprefixer');
+var isEmpty = require( 'lodash/isEmpty');
+var isString = require( 'lodash/isString');
+var isUndefined = require( 'lodash/isUndefined');
+var path = require( 'path');
+var postcss = require( 'postcss');
+var reqwest = require( 'reqwest');
+var url = require( 'url');
 
-import resolvePath from './resolve-path';
+var resolvePath = require( './resolve-path');
 
-const importSass = new Promise(async resolve => {
-  if (Modernizr.webworkers) {
-    const Sass = await System.import('sass.js/dist/sass', __moduleName);
-    const worker = await System.normalize('sass.js/dist/sass.worker', __moduleName);
-    resolve(new Sass(worker));
+var importSass = new Promise(function(resolve, reject) {
+  if (false){//if (Modernizr.webworkers) {
+    System.import('sass.js/dist/sass').then(function(Sass) {
+      System.normalize('/sass.js/dist/sass.worker').then(function(worker) {
+        resolve(new Sass(worker));
+      });
+    }).catch(function(err) {return reject(err);});
   } else {
-    const Sass = await System.import('sass.js/dist/sass.sync', __moduleName);
-    resolve(Sass);
+    System.import('sass.js/dist/sass.sync').then(function(Sass) {
+      resolve(Sass);
+    }).catch(function(err) {return reject(err);});
   }
 });
 
-async function sassImporter(request, done) {
-  let resolved;
-  let content;
-  try {
-    // Currently only supporting scss imports due to
-    // https://github.com/sass/libsass/issues/1695
-    resolved = await resolvePath(request);
-    const partialPath = resolved.replace(/\/([^/]*)$/, '/_$1');
-    const resp = await reqwest(partialPath);
-    // In Cordova Apps the response is the raw XMLHttpRequest
-    content = resp.responseText ? resp.responseText : resp;
-  } catch (e) {
-    try {
-      const resp = await reqwest(resolved);
+var sassImporter = function(request, done) {
+  var resolved;
+  var content;
+  // Currently only supporting scss imports due to
+  // https://github.com/sass/libsass/issues/1695
+  resolvePath.default(request).then(function(resolvedUrl) {
+    resolved = resolvedUrl;
+    var partialPath = resolved.replace(/\/([^/]*)$/, '/$1');
+    return reqwest(partialPath);
+  })
+    .then(function(resp) {
+      // In Cordova Apps the response is the raw XMLHttpRequest
       content = resp.responseText ? resp.responseText : resp;
-    } catch (er) {
-      done();
-      return;
-    }
-  }
-  done({ content, path: resolved });
-}
+      return content;
+    })
+    .catch(function(){return reqwest(resolved)})
+    .then(function(resp) {
+      content = resp.responseText ? resp.responseText : resp;
+      return content;
+    })
+    .then(function() { return done({ content, path: resolved });})
+    .catch(function() {return done()});
+};
 
-// intercept file loading requests (@import directive) from libsass
-importSass.then(sass => {
+// intercept file loading requests (@import directive) = require( libsass
+importSass.then(function(sass) {
   sass.importer(sassImporter);
 });
 
-async function compile(scss) {
-  const content = scss.content;
-  const responseText = content.responseText;
-  if (isString(content) && isEmpty(content) ||
-      !isUndefined(responseText) && isEmpty(responseText)) {
-    return '';
-  }
-  const sass = await importSass;
-  function inject(css) {
-    load.metadata.format = 'esm';
-    resolve('export default ' + JSON.stringify(css) + ";");
-  }
-  const { status, text, formatted } = await new Promise(res => {
-    sass.compile(content, scss.options, res);
+var compile = function(scss) {
+  return new Promise(function(resolve, reject) {
+    var content = scss.content;
+    var responseText = content.responseText;
+    if (isString(content) && isEmpty(content) ||
+        !isUndefined(responseText) && isEmpty(responseText)) {
+      return resolve('');
+    }
+    importSass.then(function(sass) {
+      function inject(css) {
+           //load.metadata.format = 'esm';
+           resolve('export default ' + JSON.stringify(css) + ";");
+      }
+      sass.compile(content, scss.options, function(result)  {
+        if (result.status === 0) {
+          if (!isUndefined(System.sassPluginOptions) &&
+              System.sassPluginOptions.autoprefixer) {
+            postcss([autoprefixer]).process(result.text).then(function(cssResponse) {
+              inject(cssResponse.css);
+            });
+          } else {
+            inject(result.text);
+          }
+        } else {
+          reject(result.formatted);
+        }
+      });
+    });
   });
-  if (status !== 0) {
-    throw formatted;
-  }
-  if (!isUndefined(System.sassPluginOptions) &&
-      System.sassPluginOptions.autoprefixer) {
-    const { css } = await postcss([autoprefixer]).process(text);
-    inject(css);
-  } else {
-    inject(text);
-  }
-  // return an empty module in the module pipeline itself
-  return '';
-}
+};
 
-export default async function sassInject(load) {
-  let basePath = path.dirname(url.parse(load.address).pathname);
+exports.default =function(load) {
+  var basePath = path.dirname(url.parse(load.address).pathname);
   if (basePath !== '/') {
     basePath += '/';
   }
-  const urlBase = basePath;
-  const indentedSyntax = load.address.endsWith('.sass');
-  let options = {};
+  var urlBase = basePath;
+  var indentedSyntax = load.address.endsWith('.sass');
+  var options = {};
   if (!isUndefined(System.sassPluginOptions) &&
       !isUndefined(System.sassPluginOptions.sassOptions)) {
     options = System.sassPluginOptions.sassOptions;
@@ -96,11 +102,13 @@ export default async function sassInject(load) {
   options.indentedSyntax = indentedSyntax;
   options.importer = { urlBase };
   // load initial scss file
-  const resp = await reqwest(load.address);
-  // In Cordova Apps the response is the raw XMLHttpRequest
-  const scss = {
-    content: resp.responseText ? resp.responseText : resp,
-    options,
-  };
-  return compile(scss);
-}
+  return reqwest(load.address)
+    // In Cordova Apps the response is the raw XMLHttpRequest
+    .then(function(resp) {
+      return {
+        content: resp.responseText ? resp.responseText : resp,
+        options,
+      };
+    })
+    .then(compile);
+};
